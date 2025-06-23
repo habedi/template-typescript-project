@@ -1,71 +1,98 @@
-# Generic Makefile for Python projects
+# Load environment variables from .env file
+ifneq (,$(wildcard ./.env))
+    include .env
+    export $(shell sed 's/=.*//' .env)
+else
+    $(warning .env file not found. Environment variables not loaded.)
+endif
 
-# Variables
-PYTHON      ?= python3
-PIP         ?= pip3
-DEP_MNGR    ?= poetry
-DOCS_DIR   ?= docs
+# ==============================================================================
+# VARIABLES
+# ==============================================================================
+PACKAGE_MANAGER   ?= npm
+NODE_MODULES_DIR  ?= node_modules
+REMOVABLE_THINGS  ?= .vitest-cache coverage
 
-# Directories and files to clean
-CACHE_DIRS  = .mypy_cache .pytest_cache .ruff_cache
-COVERAGE    = .coverage htmlcov coverage.xml
-DIST_DIRS   = dist junit
-TMP_DIRS   = site
+# ==============================================================================
+# SETUP & CHECKS
+# ==============================================================================
+# Check for required tools
+REQUIRED_BINS := node $(PACKAGE_MANAGER) docker
+$(foreach bin,$(REQUIRED_BINS),\
+	$(if $(shell command -v $(bin) 2> /dev/null),,$(error Please install $(bin) to continue)))
+
+# Internal target to check for node_modules. Not intended for direct use.
+check-deps:
+	@if [ ! -d "$(NODE_MODULES_DIR)" ]; then \
+		echo "Dependencies not found. Running 'make install' first..."; \
+		$(MAKE) install; \
+	fi
+
+# Declare all targets as phony (not files)
+.PHONY: help install check-deps test coverage lint lint-fix format typecheck build start dev clean reset \
+setup-hooks test-hooks
 
 .DEFAULT_GOAL := help
 
-.PHONY: help
-help: ## Show help for all targets
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+# ==============================================================================
+# GENERAL COMMANDS
+# ==============================================================================
+help: ## Show this help message
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | \
+	awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-# Setup & Installation
-.PHONY: setup
-setup: ## Install system dependencies and dependency manager (e.g., Poetry)
-	sudo apt-get update
-	sudo apt-get install -y python3-pip
-	$(PIP) install --upgrade pip
-	$(PIP) install $(DEP_MNGR)
+install: ## Install project dependencies
+	$(PACKAGE_MANAGER) install
 
-.PHONY: install
-install: ## Install Python dependencies
-	$(DEP_MNGR) install --all-extras --no-interaction
+build: check-deps ## Build the project for production
+	$(PACKAGE_MANAGER) run build
 
-# Quality & Testing
-.PHONY: test
-test: ## Run tests
-	$(DEP_MNGR) run pytest
+start: ## Start the production server
+	$(PACKAGE_MANAGER) start
 
-.PHONY: lint
-lint: ## Run linter checks
-	$(DEP_MNGR) run ruff check --fix
+dev: ## Start the development server
+	$(PACKAGE_MANAGER) run dev
 
-.PHONY: format
-format: ## Format code
-	$(DEP_MNGR) run ruff format
+clean: ## Remove caches, build artifacts and documentation
+	rm -rf dist $(NODE_MODULES_DIR) $(REMOVABLE_THINGS) site
 
-.PHONY: typecheck
-typecheck: ## Typecheck code
-	$(DEP_MNGR) run mypy .
+# ==============================================================================
+# DEVELOPMENT
+# ==============================================================================
+test: check-deps ## Run the test suite
+	$(PACKAGE_MANAGER) test
 
-# Documentation
-.PHONY: docs
-docs: ## Build documentation
-	$(DEP_MNGR) run mkdocs build
+coverage: check-deps ## Run the test suite and generate a coverage report
+	$(PACKAGE_MANAGER) run coverage
 
-# Build & Publish
-.PHONY: build
-build: ## Build distributions
-	$(DEP_MNGR) build
+lint: check-deps ## Run linter checks
+	$(PACKAGE_MANAGER) run lint
 
-.PHONY: publish
-publish: ## Publish to PyPI (requires PYPI_TOKEN)
-	$(DEP_MNGR) config pypi-token.pypi $(PYPI_TOKEN)
-	$(DEP_MNGR) publish --build
+lint-fix: check-deps ## Automatically fix linter errors
+	$(PACKAGE_MANAGER) run lint:fix
 
-# Maintenance
-.PHONY: clean
-clean: ## Remove caches and build artifacts
-	find . -type f -name '*.pyc' -delete
-	find . -type d -name '__pycache__' -exec rm -rf {} +
-	rm -rf $(CACHE_DIRS) $(COVERAGE) $(DIST_DIRS) $(TMP_DIRS)
+typecheck: check-deps ## Run TypeScript type checks
+	$(PACKAGE_MANAGER) run typecheck
+
+format: check-deps ## Format code with Prettier
+	$(PACKAGE_MANAGER) run format
+
+# ==============================================================================
+# GIT HOOKS
+# ==============================================================================
+setup-hooks: ## Install Git hooks (pre-commit and pre-push)
+	@echo "Setting up Git hooks..."
+	@if ! command -v pre-commit &> /dev/null; then \
+	   echo "pre-commit not found. Please install it using 'pip install pre-commit'"; \
+	   exit 1; \
+	fi
+	@pre-commit install --hook-type pre-commit
+	@pre-commit install --hook-type pre-push
+	@pre-commit install-hooks
+
+test-hooks: ## Test Git hooks on all files
+	@echo "Testing Git hooks..."
+	@pre-commit run --all-files --show-diff-on-failure

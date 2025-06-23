@@ -12,7 +12,8 @@ indent_size = 4 # Default indentation size
 insert_final_newline = true # Make sure files end with a newline
 trim_trailing_whitespace = true # Remove trailing whitespace
 
-[*.py]
+# JavaScript and TypeScript files
+[*.{js,ts,jsx,tsx}]
 max_line_length = 100
 
 # Markdown files
@@ -24,6 +25,14 @@ trim_trailing_whitespace = false
 [*.sh]
 indent_size = 2
 
+# JSON files
+[*.json]
+indent_size = 2
+
 # YAML files
 [*.{yml,yaml}]
 indent_size = 2
+
+# Python files
+[*.py]
+max_line_length = 100

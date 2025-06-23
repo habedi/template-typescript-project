@@ -1,44 +1,42 @@
-name: Run Tests
+name: Tests
 
 on:
   workflow_dispatch:
-  workflow_call:
   pull_request:
     branches:
       - main
-      - develop
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
-        # Define the Python versions to test against
-        python-version: [ "3.10", "3.11", "3.12", "3.13" ]
+        node-version: ["20.x", "22.x"]
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set Up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          node-version: ${{ matrix.node-version }}
 
       - name: Install Dependencies
-        run: |
-          make setup
-          make install
+        run: make install
 
       - name: Run Tests with Coverage
-        run: |
-          make test
+        run: make coverage
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
